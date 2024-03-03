@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"strings"
 	"os"
 	"log"
@@ -57,7 +58,17 @@ func main() {
 
 	ch := make(chan ScrapedData)
 
-	urls := map[string]string{"https://slackjeff.com.br": "Slackjeff", "https://nmap.org": "Nmap"}
+	urlArg := os.Args[1:]
+	if len(urlArg) == 0 {
+	 	fmt.Printf("USE: ./%s URL1 URL2...\n", os.Args[0])
+	 	return
+	}
+
+	urls := make(map[string]string)
+	for _, url := range urlArg {
+		name := extractUrlName(url)
+		urls[url] = name
+	}
 
 	file, err := os.Create("result.csv")
 	if err != nil {
@@ -80,7 +91,10 @@ func main() {
 
 	headers := []string{"SOURCE", "SCRAPED URL"}
 
+	var saveWG sync.WaitGroup
+	saveWG.Add(1)
 	go func() {
+		defer saveWG.Done()
 		writer.Write(headers)
 		for data := range ch {
 			err := writer.Write([]string{data.Source, data.URL})
@@ -90,5 +104,25 @@ func main() {
 		}
 	}()
 
-	wg.Wait()
+	go func() {
+		wg.Wait()
+		close(ch)
+	}()
+
+	saveWG.Wait()
+}
+
+func extractUrlName(url string) string {
+	name := strings.Replace(url, "https://", "", 1)
+	name = strings.Replace(name, "http://", "", 1)
+
+	// Remove all after /
+	parts := strings.Split(name, "/")
+	name = parts[0]
+
+	if strings.Contains(name, ".") {
+		name = strings.Split(name, ".")[0]
+	}
+
+	return name
 }
